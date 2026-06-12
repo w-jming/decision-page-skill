@@ -1,0 +1,30 @@
+{
+  "title": "示例项目",
+  "subtitle": "decision-page 功能演示：选择 → 保存 → 写入日志；右侧可与值守的 Claude 对话",
+  "decisions": [
+    {
+      "id": "D1",
+      "title": "数据库选型",
+      "doc": "docs/architecture.md",
+      "background": "当前原型用内存存储，上线前必须落库。\n团队没有专职 DBA，预算优先级：开发速度 > 运维成本 > 极限性能。",
+      "allowCustom": true,
+      "options": [
+        { "key": "A", "label": "PostgreSQL", "desc": "功能最全（JSON、全文检索、扩展），托管服务成熟；运维略重", "recommended": true },
+        { "key": "B", "label": "SQLite", "desc": "零运维、单文件；并发写与横向扩展受限" },
+        { "key": "C", "label": "MongoDB", "desc": "schema 灵活；团队无使用经验，事务语义需要额外学习" }
+      ],
+      "status": "open"
+    },
+    {
+      "id": "D2",
+      "title": "前端框架",
+      "background": "页面以表单和列表为主，交互中等复杂度。\n团队两人写过 Vue，没人写过 React。",
+      "allowCustom": true,
+      "options": [
+        { "key": "A", "label": "Vue 3", "desc": "贴合团队经验，上手即产出", "recommended": true },
+        { "key": "B", "label": "React", "desc": "生态最大，但全员从零学习，前两周产出受影响" }
+      ],
+      "status": "open"
+    }
+  ]
+}

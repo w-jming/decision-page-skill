@@ -1,0 +1,12 @@
+[project]
+name = "decision-page"
+version = "0.2.0"
+description = "Claude Code skill：本地交互决策页——零依赖决策卡片 + 与会话中 Claude 的实时问答"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "w-jming" }]
+
+[tool.uv]
+# 纯标准库脚本仓库，不作为包构建；uv run templates/decide.py 即可运行
+package = false
