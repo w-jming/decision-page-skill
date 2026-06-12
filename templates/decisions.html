@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__TITLE__ · 待决策事项</title>
+<style>
+  :root{--bg:#F8FAFC;--surface:#FFF;--muted:#F1F5F9;--border:#CBD5E1;--text:#0F172A;--text2:#475569;--primary:#0F766E;--primary2:#115E59;}
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{background:var(--bg);color:var(--text);font:14px/22px Inter,"Noto Sans CJK SC",ui-sans-serif,system-ui,sans-serif;padding:32px 16px 120px;}
+  .wrap{max-width:860px;margin:0 auto;}
+  h1{font-size:28px;line-height:36px;font-weight:700;margin-bottom:6px;}
+  .sub{color:var(--text2);margin-bottom:28px;}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:20px;margin-bottom:18px;}
+  .card h2{font-size:18px;line-height:26px;margin-bottom:4px;}
+  .card h2 .tag{display:inline-block;background:var(--muted);color:var(--text2);border-radius:4px;font-size:12px;padding:1px 8px;margin-right:8px;vertical-align:2px;}
+  .ctx{color:var(--text2);font-size:13px;margin:6px 0 14px;}
+  label.opt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;cursor:pointer;}
+  label.opt:hover{background:var(--muted);}
+  label.opt input{margin-top:4px;accent-color:var(--primary);}
+  label.opt.checked{border-color:var(--primary);background:#F0FDFA;}
+  .rec{display:inline-block;background:var(--primary);color:#fff;border-radius:4px;font-size:12px;padding:0 6px;margin-left:6px;}
+  .optdesc{color:var(--text2);font-size:13px;}
+  textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font:inherit;resize:vertical;min-height:34px;}
+  .bar{position:fixed;left:0;right:0;bottom:0;background:var(--surface);border-top:1px solid var(--border);padding:12px 16px;text-align:center;}
+  button{background:var(--primary);color:#fff;border:0;border-radius:8px;padding:10px 22px;font:inherit;font-weight:650;cursor:pointer;}
+  button:hover{background:var(--primary2);}
+  button.ghost{background:var(--surface);color:var(--primary);border:1px solid var(--primary);margin-left:10px;}
+  #out{max-width:860px;margin:10px auto 0;display:none;text-align:left;}
+  #out textarea{min-height:220px;font-family:ui-monospace,monospace;font-size:13px;}
+  .hint{color:var(--text2);font-size:12px;margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>__TITLE__ · 待决策事项</h1>
+  <p class="sub">逐项选择后点底部「<strong>保存决策</strong>」，结果会直接写入同目录 <code>decisions-log.md</code>，之后告知智能体"决策已保存"即可。推荐项已标注。</p>
+  <div id="cards"></div>
+  <div class="card">
+    <h2>补充说明（可选）</h2>
+    <p class="ctx">对任何条目的额外约束或新要求，写在这里。</p>
+    <textarea id="globalNote" placeholder="补充说明……"></textarea>
+  </div>
+</div>
+<div class="bar">
+  <button onclick="save()">保存决策</button>
+  <button class="ghost" onclick="gen()">预览结果</button>
+  <button class="ghost" onclick="copyOut()">复制（兜底）</button>
+  <div id="out"><textarea id="outText" readonly></textarea><div class="hint" id="hint">「保存决策」会把结果写入 decisions-log.md；智能体读取后回填决策表。</div></div>
+</div>
+<script>
+const DECISIONS=[/* __DECISIONS__ 由智能体按 SKILL.md 第 2 节格式填充 */];
+const cards=document.getElementById("cards");
+DECISIONS.forEach(d=>{
+  const el=document.createElement("div");el.className="card";
+  el.innerHTML=`<h2><span class="tag">${d.id}</span>${d.title}</h2><p class="ctx">${d.ctx}（详见 ${d.doc}）</p>`+
+    d.opts.map(o=>`<label class="opt"><input type="radio" name="${d.id}" value="${o.k}"><span><strong>${o.k}. ${o.t}</strong>${o.rec?'<span class="rec">推荐</span>':''}<br><span class="optdesc">${o.d}</span></span></label>`).join("")+
+    `<textarea data-note="${d.id}" placeholder="该项备注（可选）"></textarea>`;
+  cards.appendChild(el);
+});
+document.addEventListener("change",e=>{
+  if(e.target.type==="radio"){
+    document.getElementsByName(e.target.name).forEach(r=>r.closest("label").classList.toggle("checked",r.checked));
+  }
+});
+function gen(){
+  const lines=["## 决策结果（"+new Date().toISOString().slice(0,10)+"）",""];
+  DECISIONS.forEach(d=>{
+    const sel=document.querySelector(`input[name="${d.id}"]:checked`);
+    const opt=sel?d.opts.find(o=>o.k===sel.value):null;
+    const note=document.querySelector(`textarea[data-note="${d.id}"]`).value.trim();
+    lines.push(`- **${d.id} ${d.title}**：${opt?opt.k+". "+opt.t:"（未选择）"}${note?"；备注："+note:""}`);
+  });
+  const g=document.getElementById("globalNote").value.trim();
+  if(g){lines.push("","补充说明："+g);}
+  document.getElementById("outText").value=lines.join("\n");
+  document.getElementById("out").style.display="block";
+}
+function copyOut(){
+  gen();
+  navigator.clipboard.writeText(document.getElementById("outText").value).then(()=>alert("已复制，请粘贴回对话。"));
+}
+async function save(){
+  gen();
+  const md=document.getElementById("outText").value;
+  if(location.protocol.indexOf("http")===0){
+    try{
+      const r=await fetch("/save",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({markdown:md})});
+      const j=await r.json();
+      if(j.ok){document.getElementById("hint").textContent="✅ 已写入 "+j.path+"，回到对话告诉智能体「决策已保存」即可。";}
+      else{alert("保存失败："+j.error);}
+    }catch(e){alert("保存失败（服务未运行？请用 python3 decide.py 启动）："+e);}
+  }else{
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([md],{type:"text/markdown"}));
+    a.download="decisions-result.md";a.click();
+    alert("当前以 file:// 打开，无法直接写文件，已改为下载 decisions-result.md。建议用 python3 decide.py 启动本页。");
+  }
+}
+</script>
+</body>
+</html>
