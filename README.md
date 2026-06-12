@@ -67,6 +67,8 @@ Claude Code 会话（Monitor 值守 tail -F 两个文件）
 python3 decide.py                     # 启动服务（默认端口 8765，自动开浏览器）
 python3 decide.py --port 8888 --no-browser
 python3 decide.py --dir docs/decisions    # 数据目录不在脚本旁时指定（位置任意）
+python3 decide.py --idle-timeout 7200     # 空闲自动退出秒数；页面开着不计时，关掉页面后开始计时
+                                          # 默认 3600（一小时），0 = 一直运行
 python3 decide.py reply "简短回答"         # 向聊天面板追加一条 Claude 回复
 python3 decide.py reply - <<'EOF'          # 多行/含特殊字符的回复走 stdin
 支持 **加粗**、`代码`、列表与代码块

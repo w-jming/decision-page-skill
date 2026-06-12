@@ -5,6 +5,8 @@
     python3 decide.py                          # 启动服务并自动打开浏览器
     python3 decide.py --port 8888 --no-browser
     python3 decide.py --dir docs/decisions     # 数据目录不在脚本旁时指定
+    python3 decide.py --idle-timeout 7200      # 空闲自动退出秒数（默认 3600；0 = 不退出）
+                                               # 页面开着（SSE 连接在）不算空闲，关掉页面后计时
     python3 decide.py reply "回答内容"          # 以 Claude 身份向聊天面板追加一条回复
     python3 decide.py reply - <<'EOF'          # 多行回复从 stdin 读
     第一行
@@ -34,6 +36,13 @@ PAGE = HERE / "decisions.html"
 
 DATA_DIR = HERE  # main() 里按 --dir 覆盖
 _LOCK = threading.Lock()
+LAST_ACTIVITY = time.time()  # 任何请求或存活的 SSE 连接都会刷新；供空闲看门狗使用
+IDLE_TIMEOUT = 3600  # serve() 按 --idle-timeout 覆盖；0 = 不自动退出
+
+
+def _touch_activity() -> None:
+    global LAST_ACTIVITY
+    LAST_ACTIVITY = time.time()
 
 LOG_HEADER = """# 决策日志
 
@@ -139,6 +148,7 @@ class Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
     def do_GET(self) -> None:  # noqa: N802
+        _touch_activity()
         if self.path in ("/", "/decisions.html"):
             self._send(200, PAGE.read_bytes(), "text/html; charset=utf-8")
         elif self.path == "/api/state":
@@ -149,6 +159,7 @@ class Handler(BaseHTTPRequestHandler):
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self) -> None:  # noqa: N802
+        _touch_activity()
         try:
             if self.path == "/api/chat":
                 text = (self._payload().get("text") or "").strip()
@@ -194,20 +205,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         last: dict | None = None
         last_beat = 0.0
+        # 心跳是发现“页面已关”的唯一手段（死连接首次写入未必报错），
+        # 探活粒度必须细于空闲预算，否则看门狗会被死连接误保活
+        ping_iv = min(15.0, max(1.0, IDLE_TIMEOUT / 4)) if IDLE_TIMEOUT > 0 else 15.0
         try:
             while True:
+                _touch_activity()  # 页面开着就不算空闲
                 cur = _versions()
                 now = time.time()
                 if cur != last:
                     self.wfile.write(f"data: {json.dumps(cur)}\n\n".encode("utf-8"))
                     self.wfile.flush()
                     last, last_beat = cur, now
-                elif now - last_beat > 15:
+                elif now - last_beat > ping_iv:
                     self.wfile.write(b": ping\n\n")
                     self.wfile.flush()
                     last_beat = now
                 time.sleep(0.5)
-        except (BrokenPipeError, ConnectionResetError):
+        except OSError:
             pass
 
     def log_message(self, *args: object) -> None:  # 静默默认访问日志
@@ -219,8 +234,24 @@ def serve(args: argparse.Namespace) -> None:
     url = f"http://127.0.0.1:{args.port}/"
     server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     server.daemon_threads = True
+    global IDLE_TIMEOUT
+    IDLE_TIMEOUT = max(0, args.idle_timeout)
     print(f"[decide] 决策页：{url}（Ctrl+C 退出）")
     print(f"[decide] 数据目录：{DATA_DIR}")
+    if IDLE_TIMEOUT > 0:
+        print(f"[decide] 空闲 {IDLE_TIMEOUT}s 自动退出（页面开着不计时；--idle-timeout 0 可关闭）")
+
+        def watchdog() -> None:
+            poll = max(1, min(30, IDLE_TIMEOUT // 4))
+            while True:
+                time.sleep(poll)
+                idle = time.time() - LAST_ACTIVITY
+                if idle > IDLE_TIMEOUT:
+                    print(f"[decide] 已空闲 {int(idle)}s（无页面连接与请求），自动退出")
+                    server.shutdown()
+                    return
+
+        threading.Thread(target=watchdog, daemon=True).start()
     if not args.no_browser:
         webbrowser.open(url)
     try:
@@ -265,6 +296,8 @@ def main() -> None:
     p_serve = sub.add_parser("serve", help="启动服务（默认命令）")
     p_serve.add_argument("--port", type=int, default=8765)
     p_serve.add_argument("--no-browser", action="store_true")
+    p_serve.add_argument("--idle-timeout", type=int, default=3600,
+                         help="空闲多少秒后自动退出（页面开着不计时）；0 = 不自动退出（默认 3600）")
     p_reply = sub.add_parser("reply", help="向聊天面板追加一条 Claude 回复（'-' 或省略则读 stdin）")
     p_reply.add_argument("text", nargs="?", default=None)
 
