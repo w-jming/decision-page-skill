@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+
+# 示例目录的运行时产物（decisions.json 的 decided 状态变更请用 git checkout 还原）
+examples/demo/chat.jsonl
+examples/demo/decisions-log.md
