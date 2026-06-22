@@ -2,6 +2,10 @@ __pycache__/
 *.py[cod]
 .venv/
 
+# 值守游标（运行时产物，记录 watch/poll 看到的最新事件位置）
+.decide-watch.json
+
 # 示例目录的运行时产物（decisions.json 的 decided 状态变更请用 git checkout 还原）
 examples/demo/chat.jsonl
 examples/demo/decisions-log.md
+examples/demo/.decide-watch.json
