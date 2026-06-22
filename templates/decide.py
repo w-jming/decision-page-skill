@@ -7,11 +7,13 @@
     python3 decide.py --dir docs/decisions     # 数据目录不在脚本旁时指定
     python3 decide.py --idle-timeout 7200      # 空闲自动退出秒数（默认 3600；0 = 不退出）
                                                # 页面开着（SSE 连接在）不算空闲，关掉页面后计时
-    python3 decide.py reply "回答内容"          # 以 Claude 身份向聊天面板追加一条回复
+    python3 decide.py reply "回答内容"          # 以智能体身份向聊天面板追加一条回复
     python3 decide.py reply - <<'EOF'          # 多行回复从 stdin 读
     第一行
     第二行
     EOF
+    python3 decide.py watch                     # 持续输出新事件（提问/保存），供值守；与 agent 无关
+    python3 decide.py poll                      # 打印自上次以来的新事件后退出（任何 agent 可周期调用）
 
 数据目录中的文件（默认为脚本所在目录，--dir 可改）：
     decisions.json    决策数据，由 Claude 维护；文件一变页面即热更新
@@ -271,6 +273,88 @@ def reply(args: argparse.Namespace) -> None:
     print(f"[decide] 已回复 #{msg['id']} → {_f('chat.jsonl')}")
 
 
+# ── 值守事件流（与具体 agent 无关）─────────────────────────────────────────
+# watch/poll 把"用户提问"和"保存决策"归一化成事件行，供任何能跑命令、读其输出
+# 的 agent 值守。游标存在数据目录的 .decide-watch.json，只认新增——原地修改日志
+# 不会重放（这正是旧 `tail -F` 流的痛点）。
+WATCH_STATE_FILE = ".decide-watch.json"
+
+
+def _log_headers() -> list:
+    p = _f("decisions-log.md")
+    if not p.exists():
+        return []
+    return [ln for ln in p.read_text(encoding="utf-8").splitlines() if ln.startswith("## ")]
+
+
+def _current_cursor() -> dict:
+    msgs = _read_chat()
+    max_id = max((m.get("id", 0) for m in msgs), default=0)
+    return {"chat_id": max_id, "log_entries": len(_log_headers())}
+
+
+def _load_cursor() -> "dict | None":
+    try:
+        return json.loads(_f(WATCH_STATE_FILE).read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None
+
+
+def _save_cursor(cur: dict) -> None:
+    _f(WATCH_STATE_FILE).write_text(json.dumps(cur), encoding="utf-8")
+
+
+def _collect_events(cur: dict) -> tuple:
+    """按游标取新事件；返回 (事件行列表, 新游标)。"""
+    events = []
+    msgs = _read_chat()
+    last_id = cur.get("chat_id", 0)
+    max_id = last_id
+    for m in msgs:
+        mid = m.get("id", 0)
+        if mid > last_id and m.get("role") == "user":
+            text = " ".join((m.get("text") or "").split())
+            events.append(f"QUESTION #{mid}: {text[:120]}")
+        max_id = max(max_id, mid)
+    headers = _log_headers()
+    for h in headers[cur.get("log_entries", 0):]:
+        events.append(f"SAVED: {h.lstrip('# ').strip()}")
+    return events, {"chat_id": max_id, "log_entries": len(headers)}
+
+
+def poll(args: argparse.Namespace) -> None:
+    if args.all:
+        cur = {"chat_id": 0, "log_entries": 0}
+    else:
+        cur = _load_cursor()
+        if cur is None:  # 首次：从当前末尾开始，不回放历史（同 tail -F -n 0）
+            _save_cursor(_current_cursor())
+            return
+    events, new_cur = _collect_events(cur)
+    _save_cursor(new_cur)
+    for e in events:
+        print(e)
+        sys.stdout.flush()
+
+
+def watch(args: argparse.Namespace) -> None:
+    cur = {"chat_id": 0, "log_entries": 0} if args.all else (_load_cursor() or _current_cursor())
+    _save_cursor(cur)
+    interval = max(0.2, args.interval)
+    try:
+        while True:
+            events, new_cur = _collect_events(cur)
+            if new_cur != cur:
+                cur = new_cur
+                _save_cursor(cur)
+            for e in events:
+                print(e)
+                sys.stdout.flush()
+            time.sleep(interval)
+    except KeyboardInterrupt:
+        pass
+
+
 def _extract_dir(argv: list) -> tuple:
     """把 --dir 从 argv 中取出，使其在子命令前后均可使用。"""
     rest, data_dir, i = [], None, 0
@@ -298,12 +382,17 @@ def main() -> None:
     p_serve.add_argument("--no-browser", action="store_true")
     p_serve.add_argument("--idle-timeout", type=int, default=3600,
                          help="空闲多少秒后自动退出（页面开着不计时）；0 = 不自动退出（默认 3600）")
-    p_reply = sub.add_parser("reply", help="向聊天面板追加一条 Claude 回复（'-' 或省略则读 stdin）")
+    p_reply = sub.add_parser("reply", help="向聊天面板追加一条智能体回复（'-' 或省略则读 stdin）")
     p_reply.add_argument("text", nargs="?", default=None)
+    p_poll = sub.add_parser("poll", help="打印自上次以来的新事件后退出（提问/保存；任何 agent 可周期调用）")
+    p_poll.add_argument("--all", action="store_true", help="忽略游标，输出全部历史事件")
+    p_watch = sub.add_parser("watch", help="持续输出新事件（每行一个，供值守）；Ctrl+C 退出")
+    p_watch.add_argument("--all", action="store_true", help="忽略游标，先输出全部历史事件再持续")
+    p_watch.add_argument("--interval", type=float, default=1.0, help="轮询间隔秒（默认 1.0）")
 
     argv, data_dir = _extract_dir(sys.argv[1:])
     # 无子命令时默认 serve（python3 decide.py --port 8888 等价于 serve --port 8888）
-    if argv[:1] not in (["serve"], ["reply"]) and "-h" not in argv and "--help" not in argv:
+    if argv[:1] not in (["serve"], ["reply"], ["poll"], ["watch"]) and "-h" not in argv and "--help" not in argv:
         argv = ["serve"] + argv
     args = parser.parse_args(argv)
 
@@ -314,6 +403,10 @@ def main() -> None:
 
     if args.cmd == "reply":
         reply(args)
+    elif args.cmd == "poll":
+        poll(args)
+    elif args.cmd == "watch":
+        watch(args)
     else:
         serve(args)
 
