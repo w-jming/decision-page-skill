@@ -1,4 +1,4 @@
-# decision-page
+# decision-page-skill
 
 > Claude Code skill：本地交互决策页 —— 把需要人工拍板的事项做成浏览器里的决策卡片，选完直接落盘；页面内还能和会话中的 Claude 实时问答，决策内容随问随改、即时热更新。
 
@@ -16,8 +16,8 @@
 ## 快速体验
 
 ```bash
-git clone https://github.com/w-jming/decision-page.git
-cd decision-page
+git clone https://github.com/w-jming/decision-page-skill.git
+cd decision-page-skill
 uv run templates/decide.py --dir examples/demo   # 或 python3 templates/decide.py --dir examples/demo
 ```
 
@@ -28,8 +28,8 @@ uv run templates/decide.py --dir examples/demo   # 或 python3 templates/decide.
 ## 作为 Claude Code skill 安装
 
 ```bash
-git clone https://github.com/w-jming/decision-page.git ~/workplace/skills/decision-page
-ln -s ~/workplace/skills/decision-page ~/.claude/skills/decision-page
+git clone https://github.com/w-jming/decision-page-skill.git ~/workplace/skills/decision-page-skill
+ln -s ~/workplace/skills/decision-page-skill ~/.claude/skills/decision-page-skill
 ```
 
 之后在任何 Claude Code 会话中，当出现多项需要拍板的决策时，Claude 会按 [SKILL.md](SKILL.md) 的流程：复制模板 → 生成 `decisions.json` → 后台启动服务 → 用 Monitor 值守聊天与日志 → 实时应答/热更新 → 决策保存后自动回填执行。也可以把值守交给后台子 agent，主会话继续干别的活。

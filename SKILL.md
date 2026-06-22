@@ -1,9 +1,9 @@
 ---
-name: decision-page
+name: decision-page-skill
 description: 当存在需要用户人工拍板的决策事项（≥2 项，或用户要求）时使用。生成本地交互决策页：零依赖 Python 服务 + HTML 决策卡片页 + 内置 Claude 问答面板。用户在浏览器选择/提问，Claude 通过 Monitor 值守实时应答并可热更新页面内容；「保存决策」直接追加写入 decisions-log.md（不需要复制粘贴回对话）。后续会话读取日志、回填决策表并执行。用户硬性偏好：人工决策不得只在聊天里罗列。
 ---
 
-# decision-page · 交互决策页
+# decision-page-skill · 交互决策页
 
 ## 何时使用
 
